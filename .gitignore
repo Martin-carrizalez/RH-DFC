@@ -1,0 +1,16 @@
+# Created by venv; see https://docs.python.org/3/library/venv.html
+# 1. Ignorar el Entorno Virtual
+# (Reemplaza 'venv' si tu entorno tiene otro nombre)
+/venv/
+*.venv
+
+# 2. Ignorar Archivos de Secretos/Configuración
+# ¡IMPORTANTE! Nombra tu archivo de claves como uno de estos:
+
+# Archivo común para guardar variables de entorno
+.env
+*.ini
+*.cfg
+secrets.json
+
+secrets.toml

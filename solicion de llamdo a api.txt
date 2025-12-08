@@ -1,0 +1,29 @@
+@st.cache_resource
+def get_google_sheet():
+    credentials = Credentials.from_service_account_info(
+        st.secrets["gcp_service_account"],
+        scopes=[
+            "https://www.googleapis.com/auth/spreadsheets",
+            "https://www.googleapis.com/auth/drive"
+        ]
+    )
+    gc = gspread.authorize(credentials)
+    return gc.open(st.secrets["sheet_name"])
+
+@st.cache_resource
+def init_sheets():
+    spreadsheet = get_google_sheet()
+    
+    try:
+        config_sheet = spreadsheet.worksheet("Config")
+    except gspread.exceptions.WorksheetNotFound:
+        config_sheet = spreadsheet.add_worksheet("Config", rows=100, cols=10)
+        config_sheet.update('A1:C1', [['Timestamp', 'Jueces', 'EquiposPorTema']])
+    
+    try:
+        calif_sheet = spreadsheet.worksheet("Calificaciones")
+    except gspread.exceptions.WorksheetNotFound:
+        calif_sheet = spreadsheet.add_worksheet("Calificaciones", rows=10000, cols=10)
+        calif_sheet.update('A1:H1', [['Tema', 'Equipo', 'Juez', 'Categoria', 'Criterio', 'Cumple', 'Puntos', 'Timestamp']])
+    
+    return config_sheet, calif_sheet
