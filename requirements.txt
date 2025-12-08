@@ -5,3 +5,4 @@ pandas
 pillow
 python-dateutil
 supabase
+bcrypt

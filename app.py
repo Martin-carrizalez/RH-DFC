@@ -2,6 +2,7 @@ import streamlit as st
 from auth import check_authentication, login, logout, get_user_info
 from modules.asistencias import show_asistencias_module
 
+
 # Configuración de la página
 st.set_page_config(
     page_title="Sistema RH",

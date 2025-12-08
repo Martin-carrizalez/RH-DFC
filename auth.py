@@ -1,27 +1,27 @@
 import streamlit as st
+import bcrypt
 from config import get_sheets_manager
 
 def check_authentication():
     """Verifica si el usuario está autenticado"""
-    if 'authenticated' not in st.session_state:
-        st.session_state.authenticated = False
-    if 'user_data' not in st.session_state:
-        st.session_state.user_data = None
-    
-    return st.session_state.authenticated
+    return st.session_state.get('authenticated', False)
+
+def get_user_info():
+    """Retorna información del usuario actual"""
+    return st.session_state.get('user_data', {})
 
 def login():
-    """Muestra formulario de login y valida credenciales"""
-    st.title("🔐 Sistema de Gestión de Personal")
-    st.subheader("Inicio de Sesión")
+    """Pantalla de login contra Supabase"""
+    st.title("🔐 Sistema de Recursos Humanos")
+    st.subheader("Iniciar Sesión")
     
     col1, col2, col3 = st.columns([1, 2, 1])
     
     with col2:
         with st.form("login_form"):
-            email = st.text_input("📧 Correo electrónico", placeholder="usuario@empresa.com")
+            email = st.text_input("📧 Email", placeholder="usuario@empresa.com")
             password = st.text_input("🔑 Contraseña", type="password")
-            submit = st.form_submit_button("Ingresar", use_container_width=True)
+            submit = st.form_submit_button("Ingresar", use_container_width=True, type="primary")
             
             if submit:
                 if validate_user(email, password):
@@ -31,26 +31,27 @@ def login():
                     st.error("❌ Credenciales incorrectas")
 
 def validate_user(email, password):
-    """Valida credenciales contra la hoja 'usuarios'"""
+    """Validar usuario contra Supabase con bcrypt"""
     try:
-        sheets = get_sheets_manager()
-        df_users = sheets.get_dataframe("usuarios")
+        manager = get_sheets_manager()
+        df_users = manager.get_dataframe("usuarios")
         
-        # Filtrar usuario por email
+        # Buscar usuario por email (case insensitive)
         user = df_users[df_users['email'].str.lower() == email.lower()]
         
         if not user.empty:
             user_data = user.iloc[0]
             
-            # Verificar que esté activo
+            # Verificar que el usuario esté activo
             if user_data['activo'].upper() != 'SI':
                 st.warning("⚠️ Usuario inactivo. Contacte al administrador.")
                 return False
             
-            # En producción, aquí validarías password hasheado
-            # Por ahora, password simple (¡CAMBIAR EN PRODUCCIÓN!)
-            if password == "temporal123":  # TEMPORAL - CAMBIAR
-                # Guardar datos del usuario en session_state
+            # Verificar contraseña con bcrypt
+            password_hash = user_data['password_hash']
+            
+            if bcrypt.checkpw(password.encode('utf-8'), password_hash.encode('utf-8')):
+                # Login exitoso - guardar en session_state
                 st.session_state.authenticated = True
                 st.session_state.user_data = {
                     'email': user_data['email'],
@@ -60,55 +61,51 @@ def validate_user(email, password):
                 }
                 
                 # Registrar login en auditoría
-                sheets.log_action(
+                manager.log_action(
                     usuario=user_data['email'],
                     accion="login",
                     modulo="autenticacion",
-                    detalles=f"Inicio de sesión exitoso - Rol: {user_data['rol']}"
+                    detalles=f"Login exitoso - Rol: {user_data['rol']}, Oficina: {user_data['oficina_asignada']}"
                 )
                 
                 return True
-        
-        return False
+            else:
+                # Contraseña incorrecta
+                manager.log_action(
+                    usuario=email,
+                    accion="login_failed",
+                    modulo="autenticacion",
+                    detalles="Intento fallido - Contraseña incorrecta"
+                )
+                return False
+        else:
+            # Usuario no encontrado
+            manager.log_action(
+                usuario=email,
+                accion="login_failed",
+                modulo="autenticacion",
+                detalles="Intento fallido - Usuario no existe"
+            )
+            return False
         
     except Exception as e:
-        st.error(f"❌ Error al validar usuario: {e}")
+        st.error(f"❌ Error de autenticación: {e}")
         return False
 
 def logout():
-    """Cierra la sesión del usuario"""
-    if st.session_state.authenticated:
-        sheets = get_sheets_manager()
-        sheets.log_action(
-            usuario=st.session_state.user_data['email'],
-            accion="logout",
-            modulo="autenticacion",
-            detalles="Cierre de sesión"
-        )
+    """Cerrar sesión del usuario"""
+    if st.session_state.get('authenticated'):
+        try:
+            manager = get_sheets_manager()
+            manager.log_action(
+                usuario=st.session_state.user_data['email'],
+                accion="logout",
+                modulo="autenticacion",
+                detalles="Cierre de sesión"
+            )
+        except:
+            pass  # Si falla el log no bloqueamos el logout
     
     st.session_state.authenticated = False
     st.session_state.user_data = None
     st.rerun()
-
-def require_role(allowed_roles):
-    """Decorator para restringir acceso por rol"""
-    def decorator(func):
-        def wrapper(*args, **kwargs):
-            if not check_authentication():
-                st.warning("⚠️ Debe iniciar sesión")
-                return None
-            
-            user_role = st.session_state.user_data['rol']
-            if user_role not in allowed_roles:
-                st.error(f"❌ Acceso denegado. Se requiere rol: {', '.join(allowed_roles)}")
-                return None
-            
-            return func(*args, **kwargs)
-        return wrapper
-    return decorator
-
-def get_user_info():
-    """Retorna información del usuario actual"""
-    if check_authentication():
-        return st.session_state.user_data
-    return None
