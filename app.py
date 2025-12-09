@@ -3,6 +3,7 @@ from auth import check_authentication, login, logout, get_user_info
 from modules.asistencias import show_asistencias_module
 from modules.permisos import show_permisos_module
 from modules.incapacidades import show_incapacidades_module
+from modules.bonos import show_bonos_module
 
 
 # Configuración de la página
@@ -326,11 +327,6 @@ def show_dashboard():
                 st.error(f"Error al cargar incapacidades: {e}")
         else:
             st.info("No hay incapacidades registradas")
-
-def show_bonos_module():
-    """Módulo de bonos (placeholder)"""
-    st.title("💰 Cálculo de Bonos")
-    st.info("🚧 Módulo en desarrollo - Próximamente disponible")
 
 def show_empleados_module():
     """Módulo de empleados (placeholder)"""
