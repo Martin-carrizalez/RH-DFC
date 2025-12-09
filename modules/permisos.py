@@ -43,7 +43,6 @@ def solicitar_permiso(user_data):
     
     manager = get_sheets_manager()
     
-    # Obtener empleados
     try:
         df_empleados = manager.get_dataframe("empleados")
         
@@ -58,14 +57,13 @@ def solicitar_permiso(user_data):
             st.warning("⚠️ No hay empleados disponibles")
             return
         
-        with st.form("form_permiso"):
+        with st.form("form_permiso_solicitud", clear_on_submit=True):
             col1, col2 = st.columns(2)
             
             with col1:
                 empleado_seleccionado = st.selectbox(
                     "Empleado",
-                    options=df_empleados['nombre_completo'].tolist(),
-                    key="empleado_permiso"
+                    options=df_empleados['nombre_completo'].tolist()
                 )
                 
                 # Obtener datos del empleado
@@ -106,43 +104,27 @@ def solicitar_permiso(user_data):
             submit = st.form_submit_button("✅ Solicitar Permiso", type="primary", use_container_width=True)
             
             if submit:
-                # CRÍTICO: Limpiar caché antes de validar
-                st.cache_data.clear()
-                
-                # PRIMERA VALIDACIÓN: Verificar duplicado exacto
-                df_permisos_check = manager.get_dataframe("permisos")
-                duplicado = df_permisos_check[
-                    (df_permisos_check['id_empleado'] == id_empleado) &
-                    (df_permisos_check['fecha_inicio'] == fecha_inicio.strftime('%Y-%m-%d')) &
-                    (df_permisos_check['fecha_fin'] == fecha_fin.strftime('%Y-%m-%d')) &
-                    (df_permisos_check['estado'] == 'Pendiente')
-                ]
-                
-                if not duplicado.empty:
-                    st.warning("⚠️ Este permiso ya fue solicitado. Revisa la pestaña Historial.")
-                    return
-                
                 # Validaciones
                 if not motivo.strip():
                     st.error("❌ El motivo es obligatorio")
-                    return
+                    st.stop()
                 
                 if fecha_fin < fecha_inicio:
                     st.error("❌ La fecha fin no puede ser anterior a la fecha inicio")
-                    return
+                    st.stop()
                 
                 if dias_solicitados <= 0:
                     st.error("❌ El permiso debe incluir al menos un día hábil")
-                    return
+                    st.stop()
                 
                 if dias_solicitados > dias_disponibles:
                     st.error(f"❌ Días insuficientes. Disponibles: {dias_disponibles}, Solicitados: {dias_solicitados}")
-                    return
+                    st.stop()
                 
                 # Verificar solapamiento de permisos
                 if verificar_solapamiento(manager, id_empleado, fecha_inicio, fecha_fin):
                     st.error("❌ Ya existe un permiso para este empleado en ese período")
-                    return
+                    st.stop()
                 
                 # Guardar permiso
                 try:
@@ -210,7 +192,7 @@ def aprobar_rechazar_permisos(user_data):
         
         # Mostrar cada permiso
         for idx, permiso in df_permisos_pendientes.iterrows():
-            with st.expander(f"🔔 {permiso['nombre_completo']} - {permiso['dias_solicitados']} días"):
+            with st.expander(f"📄 {permiso['nombre_completo']} - {permiso['dias_solicitados']} días"):
                 col1, col2 = st.columns(2)
                 
                 with col1:
@@ -241,19 +223,19 @@ def aprobar_rechazar_permisos(user_data):
                 with col_aprobar:
                     comentario_aprobar = st.text_input(
                         "Comentario (opcional)",
-                        key=f"comentario_aprobar_{permiso['id']}"
+                        key=f"permisos_comentario_aprobar_{permiso['id']}"
                     )
                     
-                    if st.button("✅ Aprobar", key=f"aprobar_{permiso['id']}", type="primary", use_container_width=True):
+                    if st.button("✅ Aprobar", key=f"permisos_aprobar_{permiso['id']}", type="primary", use_container_width=True):
                         procesar_aprobacion(manager, permiso, user_data, True, comentario_aprobar)
                 
                 with col_rechazar:
                     comentario_rechazar = st.text_input(
                         "Motivo rechazo",
-                        key=f"comentario_rechazar_{permiso['id']}"
+                        key=f"permisos_comentario_rechazar_{permiso['id']}"
                     )
                     
-                    if st.button("❌ Rechazar", key=f"rechazar_{permiso['id']}", use_container_width=True):
+                    if st.button("❌ Rechazar", key=f"permisos_rechazar_{permiso['id']}", use_container_width=True):
                         if not comentario_rechazar.strip():
                             st.error("⚠️ Debe indicar el motivo del rechazo")
                         else:
@@ -317,7 +299,7 @@ def ver_historial_permisos(user_data, todos=True):
         df_permisos = manager.get_dataframe("permisos")
         
         if df_permisos.empty:
-            st.info("📭 No hay permisos registrados")
+            st.info("🔭 No hay permisos registrados")
             return
         
         # Filtrar por oficina si es registrador
@@ -338,21 +320,23 @@ def ver_historial_permisos(user_data, todos=True):
         with col1:
             estado_filtro = st.selectbox(
                 "Estado",
-                ["Todos", "Pendiente", "Aprobado", "Rechazado"]
+                ["Todos", "Pendiente", "Aprobado", "Rechazado"],
+                key="permisos_filtro_estado"
             )
         
         with col2:
             if todos:
                 oficinas = ["Todas"] + sorted(df_permisos['oficina'].unique().tolist())
-                oficina_filtro = st.selectbox("Oficina", oficinas)
+                oficina_filtro = st.selectbox("Oficina", oficinas, key="permisos_filtro_oficina")
             else:
                 oficina_filtro = user_data['oficina']
-                st.text_input("Oficina", value=oficina_filtro, disabled=True)
+                st.text_input("Oficina", value=oficina_filtro, disabled=True, key="permisos_oficina_display")
         
         with col3:
             año_filtro = st.selectbox(
                 "Año",
-                ["Todos"] + sorted(df_permisos['fecha_inicio'].str[:4].unique().tolist(), reverse=True)
+                ["Todos"] + sorted(df_permisos['fecha_inicio'].str[:4].unique().tolist(), reverse=True),
+                key="permisos_filtro_año"
             )
         
         # Aplicar filtros
@@ -389,7 +373,7 @@ def ver_historial_permisos(user_data, todos=True):
         
         # Mostrar tabla
         if df_filtrado.empty:
-            st.info("📭 No hay permisos con los filtros seleccionados")
+            st.info("🔭 No hay permisos con los filtros seleccionados")
         else:
             # Ordenar por fecha de creación descendente
             df_mostrar = df_filtrado.sort_values('timestamp_creacion', ascending=False)
@@ -433,7 +417,8 @@ def ver_historial_permisos(user_data, todos=True):
                 csv,
                 f"permisos_{datetime.now().strftime('%Y%m%d')}.csv",
                 "text/csv",
-                use_container_width=True
+                use_container_width=True,
+                key="permisos_download_csv"
             )
     
     except Exception as e:

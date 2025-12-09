@@ -57,14 +57,13 @@ def registrar_incapacidad(user_data):
             st.warning("⚠️ No hay empleados disponibles")
             return
         
-        with st.form("form_incapacidad"):
+        with st.form("form_incapacidad_registro", clear_on_submit=True):
             col1, col2 = st.columns(2)
             
             with col1:
                 empleado_seleccionado = st.selectbox(
                     "Empleado",
-                    options=df_empleados['nombre_completo'].tolist(),
-                    key="empleado_incapacidad"
+                    options=df_empleados['nombre_completo'].tolist()
                 )
                 
                 empleado_data = df_empleados[df_empleados['nombre_completo'] == empleado_seleccionado].iloc[0]
@@ -129,30 +128,14 @@ def registrar_incapacidad(user_data):
             submit = st.form_submit_button("✅ Registrar Incapacidad", type="primary", use_container_width=True)
             
             if submit:
-                # CRÍTICO: Limpiar caché antes de validar
-                st.cache_data.clear()
-                
-                # PRIMERA VALIDACIÓN: Verificar duplicado exacto
-                df_incapacidades_check = manager.get_dataframe("incapacidades")
-                duplicado = df_incapacidades_check[
-                    (df_incapacidades_check['id_empleado'] == id_empleado) &
-                    (df_incapacidades_check['fecha_inicio'] == fecha_inicio.strftime('%Y-%m-%d')) &
-                    (df_incapacidades_check['fecha_fin'] == fecha_fin.strftime('%Y-%m-%d')) &
-                    (df_incapacidades_check['tipo'] == tipo)
-                ]
-                
-                if not duplicado.empty:
-                    st.warning("⚠️ Esta incapacidad ya fue registrada. Revisa el historial.")
-                    return
-                
                 # Validaciones
                 if fecha_fin < fecha_inicio:
                     st.error("❌ La fecha fin no puede ser anterior a la fecha inicio")
-                    return
+                    st.stop()
                 
                 if not motivo.strip():
                     st.error("❌ La descripción/diagnóstico es obligatoria")
-                    return
+                    st.stop()
                 
                 # Guardar incapacidad
                 try:
@@ -203,7 +186,7 @@ def ver_historial_incapacidades(user_data, todos=True):
         df_incapacidades = manager.get_dataframe("incapacidades")
         
         if df_incapacidades.empty:
-            st.info("📭 No hay incapacidades registradas")
+            st.info("🔭 No hay incapacidades registradas")
             return
         
         # Filtrar por oficina si es registrador
@@ -223,21 +206,19 @@ def ver_historial_incapacidades(user_data, todos=True):
         
         with col1:
             tipos = ["Todos"] + sorted(df_incapacidades['tipo'].unique().tolist())
-            tipo_filtro = st.selectbox("Tipo", tipos)
+            tipo_filtro = st.selectbox("Tipo", tipos, key="incapacidades_filtro_tipo")
         
         with col2:
             if todos:
                 oficinas = ["Todas"] + sorted(df_incapacidades['oficina'].unique().tolist())
-                oficina_filtro = st.selectbox("Oficina", oficinas)
+                oficina_filtro = st.selectbox("Oficina", oficinas, key="incapacidades_filtro_oficina")
             else:
                 oficina_filtro = user_data['oficina']
-                st.text_input("Oficina", value=oficina_filtro, disabled=True)
+                st.text_input("Oficina", value=oficina_filtro, disabled=True, key="incapacidades_oficina_display")
         
         with col3:
-            año_filtro = st.selectbox(
-                "Año",
-                ["Todos"] + sorted(df_incapacidades['fecha_inicio'].str[:4].unique().tolist(), reverse=True)
-            )
+            años = ["Todos"] + sorted(df_incapacidades['fecha_inicio'].str[:4].unique().tolist(), reverse=True)
+            año_filtro = st.selectbox("Año", años, key="incapacidades_filtro_año")
         
         # Aplicar filtros
         df_filtrado = df_incapacidades.copy()
@@ -276,7 +257,7 @@ def ver_historial_incapacidades(user_data, todos=True):
         
         # Mostrar tabla
         if df_filtrado.empty:
-            st.info("📭 No hay incapacidades con los filtros seleccionados")
+            st.info("🔭 No hay incapacidades con los filtros seleccionados")
         else:
             # Ordenar por fecha de creación descendente
             df_mostrar = df_filtrado.sort_values('timestamp_creacion', ascending=False)
@@ -313,11 +294,11 @@ def ver_historial_incapacidades(user_data, todos=True):
             )
             
             # Mostrar detalles con links a documentos
-            if st.checkbox("📎 Mostrar documentos adjuntos"):
+            if st.checkbox("🔎 Mostrar documentos adjuntos", key="incapacidades_show_docs"):
                 df_con_docs = df_mostrar[df_mostrar['documento_url'].notna()]
                 if not df_con_docs.empty:
-                    for _, row in df_con_docs.iterrows():
-                        with st.expander(f"{row['nombre_completo']} - {row['tipo']}"):
+                    for idx, row in df_con_docs.iterrows():
+                        with st.expander(f"{row['nombre_completo']} - {row['tipo']}", key=f"incapacidades_exp_doc_{idx}"):
                             st.write(f"**Fecha:** {row['fecha_inicio']} a {row['fecha_fin']}")
                             st.write(f"**Diagnóstico:** {row['motivo']}")
                             st.markdown(f"**📄 Documento:** [{row['documento_url']}]({row['documento_url']})")
@@ -331,7 +312,8 @@ def ver_historial_incapacidades(user_data, todos=True):
                 csv,
                 f"incapacidades_{datetime.now().strftime('%Y%m%d')}.csv",
                 "text/csv",
-                use_container_width=True
+                use_container_width=True,
+                key="incapacidades_download_csv"
             )
     
     except Exception as e:
@@ -348,7 +330,7 @@ def ver_estadisticas_incapacidades():
         df_incapacidades = manager.get_dataframe("incapacidades")
         
         if df_incapacidades.empty:
-            st.info("📭 No hay datos para mostrar estadísticas")
+            st.info("🔭 No hay datos para mostrar estadísticas")
             return
         
         # Obtener nombres

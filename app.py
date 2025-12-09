@@ -42,6 +42,14 @@ def main():
     
     # Usuario autenticado - mostrar interfaz principal
     user = get_user_info()
+    user_key = f"{user['email']}_{user['oficina']}"
+    
+    # CRÍTICO: Inicializar módulo actual
+    if 'active_module' not in st.session_state:
+        st.session_state.active_module = None
+    
+    if 'module_counter' not in st.session_state:
+        st.session_state.module_counter = 0
     
     # Sidebar
     with st.sidebar:
@@ -63,61 +71,97 @@ def main():
             "admin": [
                 "🏠 Dashboard",
                 "📋 Asistencias",
-                "📝 Permisos",
+                "🔖 Permisos",
                 "🏥 Incapacidades",
                 "💰 Bonos",
                 "👥 Empleados",
                 "👤 Usuarios",
                 "📊 Reportes",
-                "🔍 Auditoría"
+                "📝 Auditoría"
             ],
             "supervisora": [
                 "🏠 Dashboard",
                 "📋 Asistencias",
-                "📝 Permisos",
+                "🔖 Permisos",
                 "🏥 Incapacidades",
                 "💰 Bonos",
                 "📊 Reportes"
             ],
             "registrador": [
                 "📋 Asistencias",
-                "📝 Permisos",
+                "🔖 Permisos",
                 "🏥 Incapacidades"
             ]
         }
         
         opciones = menu_options.get(user['rol'], menu_options['registrador'])
+        
+        # Determinar índice actual
+        if st.session_state.active_module in opciones:
+            current_index = opciones.index(st.session_state.active_module)
+        else:
+            current_index = 0
+            st.session_state.active_module = opciones[0]
+        
+        # Radio button
         menu_selection = st.radio(
             "Seleccionar módulo",
             opciones,
-            label_visibility="collapsed"
+            index=current_index,
+            label_visibility="collapsed",
+            key=f"menu_radio_{user_key}"
         )
+        
+        # CRÍTICO: Detectar cambio de módulo
+        if menu_selection != st.session_state.active_module:
+            # LIMPIAR TODO el estado excepto auth
+            keys_to_keep = ['authenticated', 'user_data', 'active_module', 'module_counter']
+            keys_to_delete = [k for k in st.session_state.keys() if k not in keys_to_keep]
+            for key in keys_to_delete:
+                del st.session_state[key]
+            
+            # Actualizar módulo activo
+            st.session_state.active_module = menu_selection
+            st.session_state.module_counter += 1
+            
+            # Limpiar caché
+            st.cache_data.clear()
+            
+            # Forzar rerun
+            st.rerun()
         
         st.markdown("---")
         
         # Botón de logout
         if st.button("🚪 Cerrar Sesión", use_container_width=True):
+            for key in list(st.session_state.keys()):
+                del st.session_state[key]
+            st.cache_data.clear()
             logout()
     
-    # Contenido principal según selección
-    if menu_selection == "🏠 Dashboard":
-        show_dashboard()
-    elif menu_selection == "📋 Asistencias":
-        show_asistencias_module()
-    elif menu_selection == "📝 Permisos":
-        show_permisos_module()
-    elif menu_selection == "🏥 Incapacidades":
-        show_incapacidades_module()
-    elif menu_selection == "💰 Bonos":
-        show_bonos_module()
-    elif menu_selection == "👥 Empleados":
-        show_empleados_module()
-    elif menu_selection == "👤 Usuarios":
-        show_usuarios_module()
-    elif menu_selection == "📊 Reportes":
-        show_reportes_module()
-    elif menu_selection == "🔍 Auditoría":
-        show_auditoria_module()
+    # Contenido principal con aislamiento por contador
+    module_key = f"{st.session_state.active_module}_{st.session_state.module_counter}"
+    
+    # Container único para forzar re-renderizado limpio
+    with st.container(key=module_key):
+        if st.session_state.active_module == "🏠 Dashboard":
+            show_dashboard()
+        elif st.session_state.active_module == "📋 Asistencias":
+            show_asistencias_module()
+        elif st.session_state.active_module == "🔖 Permisos":
+            show_permisos_module()
+        elif st.session_state.active_module == "🏥 Incapacidades":
+            show_incapacidades_module()
+        elif st.session_state.active_module == "💰 Bonos":
+            show_bonos_module()
+        elif st.session_state.active_module == "👥 Empleados":
+            show_empleados_module()
+        elif st.session_state.active_module == "👤 Usuarios":
+            show_usuarios_module()
+        elif st.session_state.active_module == "📊 Reportes":
+            show_reportes_module()
+        elif st.session_state.active_module == "📝 Auditoría":
+            show_auditoria_module()
 
 def show_dashboard():
     """Dashboard principal con métricas generales"""
@@ -154,7 +198,7 @@ def show_dashboard():
         permisos_pendientes = 0
         if not df_permisos.empty and 'estado' in df_permisos.columns:
             permisos_pendientes = len(df_permisos[df_permisos['estado'] == 'Pendiente'])
-        st.metric("📝 Permisos Pendientes", permisos_pendientes)
+        st.metric("🔖 Permisos Pendientes", permisos_pendientes)
     
     with col4:
         oficinas = []
@@ -172,23 +216,18 @@ def show_dashboard():
     with tab1:
         if not df_asistencias.empty:
             try:
-                # Obtener nombres de empleados
                 df_empleados_info = sheets.get_dataframe("empleados")
-                
-                # Merge para mostrar nombres
                 df_display = df_asistencias.merge(
                     df_empleados_info[['id_empleado', 'nombre_completo']],
                     on='id_empleado',
                     how='left'
                 )
                 
-                # Ordenar por timestamp y tomar últimas 10
                 if 'timestamp_sistema' in df_display.columns:
                     df_display = df_display.sort_values('timestamp_sistema', ascending=False).head(10)
                 else:
                     df_display = df_display.tail(10)
                 
-                # Seleccionar columnas a mostrar
                 cols_mostrar = []
                 if 'fecha' in df_display.columns:
                     cols_mostrar.append('fecha')
@@ -213,23 +252,18 @@ def show_dashboard():
     with tab2:
         if not df_permisos.empty:
             try:
-                # Obtener nombres de empleados
                 df_empleados_info = sheets.get_dataframe("empleados")
-                
-                # Merge para mostrar nombres
                 df_display = df_permisos.merge(
                     df_empleados_info[['id_empleado', 'nombre_completo']],
                     on='id_empleado',
                     how='left'
                 )
                 
-                # Ordenar por fecha de creación y tomar últimos 10
                 if 'timestamp_creacion' in df_display.columns:
                     df_display = df_display.sort_values('timestamp_creacion', ascending=False).head(10)
                 else:
                     df_display = df_display.tail(10)
                 
-                # Seleccionar columnas a mostrar
                 cols_mostrar = []
                 if 'nombre_completo' in df_display.columns:
                     cols_mostrar.append('nombre_completo')
@@ -252,19 +286,17 @@ def show_dashboard():
             st.info("No hay permisos registrados")
     
     with tab3:
-        # Mostrar incapacidades activas
         df_incapacidades = sheets.get_dataframe("incapacidades")
         if not df_incapacidades.empty:
             try:
                 from datetime import datetime
+                import pandas as pd
                 hoy = datetime.now().date()
                 
-                # Filtrar incapacidades activas (fecha_fin >= hoy)
                 df_incapacidades['fecha_fin_dt'] = pd.to_datetime(df_incapacidades['fecha_fin']).dt.date
                 df_activas = df_incapacidades[df_incapacidades['fecha_fin_dt'] >= hoy]
                 
                 if not df_activas.empty:
-                    # Merge con empleados
                     df_empleados_info = sheets.get_dataframe("empleados")
                     df_display = df_activas.merge(
                         df_empleados_info[['id_empleado', 'nombre_completo']],
@@ -272,7 +304,6 @@ def show_dashboard():
                         how='left'
                     )
                     
-                    # Seleccionar columnas
                     cols_mostrar = []
                     if 'nombre_completo' in df_display.columns:
                         cols_mostrar.append('nombre_completo')
@@ -318,7 +349,7 @@ def show_reportes_module():
 
 def show_auditoria_module():
     """Módulo de auditoría (placeholder)"""
-    st.title("🔍 Registro de Auditoría")
+    st.title("📝 Registro de Auditoría")
     st.info("🚧 Módulo en desarrollo - Próximamente disponible")
 
 if __name__ == "__main__":

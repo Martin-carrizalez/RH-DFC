@@ -11,9 +11,11 @@ class DualManager:
     def __init__(self):
         self.supabase = self._init_supabase()
         self.sheets = self._init_sheets()
+        self._cache_version = 0  # Control de versión de caché
     
+    @staticmethod
     @st.cache_resource
-    def _init_supabase(_self):
+    def _init_supabase():
         """Conectar a Supabase"""
         return create_client(
             st.secrets["supabase"]["url"],
@@ -38,15 +40,32 @@ class DualManager:
     
     # ==================== LECTURA (Supabase) ====================
     
-    @st.cache_data(ttl=30)
-    def get_dataframe(_self, table_name):
-        """Leer desde Supabase (rápido, sin límites)"""
+    def get_dataframe(self, table_name):
+        """Leer desde Supabase con caché mejorado"""
+        # Usar función cacheada interna
+        return self._get_dataframe_cached(table_name, self._cache_version)
+    
+    @staticmethod
+    @st.cache_data(ttl=60, show_spinner=False)
+    def _get_dataframe_cached(table_name, _cache_version):
+        """Función interna cacheada con control de versión"""
         try:
-            response = _self.supabase.table(table_name).select("*").execute()
+            # Obtener instancia de supabase directamente
+            supabase = create_client(
+                st.secrets["supabase"]["url"],
+                st.secrets["supabase"]["key"]
+            )
+            response = supabase.table(table_name).select("*").execute()
             return pd.DataFrame(response.data)
         except Exception as e:
             st.error(f"Error al leer {table_name}: {e}")
             return pd.DataFrame()
+    
+    def invalidate_cache(self):
+        """Invalidar caché incrementando la versión"""
+        self._cache_version += 1
+        # También limpiar el caché general
+        st.cache_data.clear()
     
     # ==================== ESCRITURA (Supabase) ====================
     
@@ -55,10 +74,36 @@ class DualManager:
         try:
             data_dict['sincronizado'] = False
             self.supabase.table(table_name).insert(data_dict).execute()
-            st.cache_data.clear()
+            
+            # CRÍTICO: Invalidar caché después de insertar
+            self.invalidate_cache()
             return True
         except Exception as e:
             st.error(f"Error al guardar en {table_name}: {e}")
+            return False
+    
+    def update_row(self, table_name, row_id, data_dict):
+        """Actualizar registro en Supabase"""
+        try:
+            self.supabase.table(table_name).update(data_dict).eq('id', row_id).execute()
+            
+            # Invalidar caché después de actualizar
+            self.invalidate_cache()
+            return True
+        except Exception as e:
+            st.error(f"Error al actualizar en {table_name}: {e}")
+            return False
+    
+    def delete_row(self, table_name, row_id):
+        """Eliminar registro en Supabase"""
+        try:
+            self.supabase.table(table_name).delete().eq('id', row_id).execute()
+            
+            # Invalidar caché después de eliminar
+            self.invalidate_cache()
+            return True
+        except Exception as e:
+            st.error(f"Error al eliminar en {table_name}: {e}")
             return False
     
     def get_next_id(self, table_name):
@@ -77,7 +122,7 @@ class DualManager:
             return {"success": False, "mensaje": "Google Sheets no configurado", "sincronizados": 0}
         
         try:
-            # Obtener registros no sincronizados
+            # Obtener registros no sincronizados directamente (sin caché)
             response = self.supabase.table(tabla).select("*").eq('sincronizado', False).execute()
             pendientes = response.data
             
@@ -158,6 +203,9 @@ class DualManager:
                         'sincronizado': True
                     }).eq('id', registro['id']).execute()
             
+            # Invalidar caché después de sincronizar
+            self.invalidate_cache()
+            
             return {"success": True, "mensaje": f"{len(pendientes)} registros sincronizados", "sincronizados": len(pendientes)}
             
         except Exception as e:
@@ -174,6 +222,7 @@ class DualManager:
                 'detalles': detalles,
                 'ip': 'local'
             }).execute()
+            # No invalidar caché para logs (no son consultados frecuentemente)
         except:
             pass
 
