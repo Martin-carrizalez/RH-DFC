@@ -14,3 +14,7 @@
 secrets.json
 
 secrets.toml
+
+# Python Bytecode (compilado)
+__pycache__/
+*.pyc
