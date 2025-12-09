@@ -68,45 +68,100 @@ class DualManager:
     # ==================== SINCRONIZACIÓN ====================
     
     def sincronizar_a_sheets(self):
-        """Exportar registros no sincronizados a Google Sheets"""
+        """Exportar asistencias a Google Sheets"""
+        return self.sync_to_sheets(tabla="asistencias")
+    
+    def sync_to_sheets(self, tabla="asistencias"):
+        """Exportar registros no sincronizados a Google Sheets (genérico)"""
         if not self.sheets:
-            return False, "Google Sheets no configurado"
+            return {"success": False, "mensaje": "Google Sheets no configurado", "sincronizados": 0}
         
         try:
             # Obtener registros no sincronizados
-            response = self.supabase.table('asistencias').select("*").eq('sincronizado', False).execute()
+            response = self.supabase.table(tabla).select("*").eq('sincronizado', False).execute()
             pendientes = response.data
             
             if not pendientes:
-                return True, "No hay registros pendientes"
+                return {"success": True, "mensaje": "No hay registros pendientes", "sincronizados": 0}
             
-            # Exportar a Sheets
-            worksheet = self.sheets.worksheet('asistencias')
-            for registro in pendientes:
-                fila = [
-                    registro.get('id'),
-                    registro.get('id_empleado'),
-                    registro.get('fecha'),
-                    registro.get('hora_registro'),
-                    registro.get('estado'),
-                    registro.get('es_sabado'),
-                    registro.get('oficina'),
-                    registro.get('registrado_por'),
-                    registro.get('timestamp_sistema'),
-                    registro.get('ip_registro'),
-                    registro.get('observaciones'),
-                ]
-                worksheet.append_row(fila)
-                
-                # Marcar como sincronizado
-                self.supabase.table('asistencias').update({
-                    'sincronizado': True
-                }).eq('id', registro['id']).execute()
+            # Determinar estructura según tabla
+            if tabla == "asistencias":
+                worksheet = self.sheets.worksheet('asistencias')
+                for registro in pendientes:
+                    fila = [
+                        registro.get('id'),
+                        registro.get('id_empleado'),
+                        registro.get('fecha'),
+                        registro.get('hora_registro'),
+                        registro.get('estado'),
+                        registro.get('es_sabado'),
+                        registro.get('oficina'),
+                        registro.get('registrado_por'),
+                        registro.get('timestamp_sistema'),
+                        registro.get('ip_registro'),
+                        registro.get('observaciones'),
+                    ]
+                    worksheet.append_row(fila)
+                    
+                    # Marcar como sincronizado
+                    self.supabase.table(tabla).update({
+                        'sincronizado': True
+                    }).eq('id', registro['id']).execute()
             
-            return True, f"{len(pendientes)} registros sincronizados"
+            elif tabla == "permisos":
+                worksheet = self.sheets.worksheet('permisos')
+                for registro in pendientes:
+                    fila = [
+                        registro.get('id'),
+                        registro.get('id_empleado'),
+                        registro.get('fecha_inicio'),
+                        registro.get('fecha_fin'),
+                        registro.get('dias_solicitados'),
+                        registro.get('motivo'),
+                        registro.get('estado'),
+                        registro.get('aprobado_por'),
+                        registro.get('fecha_aprobacion'),
+                        registro.get('comentario_aprobacion'),
+                        registro.get('oficina'),
+                        registro.get('solicitado_por'),
+                        registro.get('timestamp_creacion'),
+                    ]
+                    worksheet.append_row(fila)
+                    
+                    # Marcar como sincronizado
+                    self.supabase.table(tabla).update({
+                        'sincronizado': True
+                    }).eq('id', registro['id']).execute()
+            
+            elif tabla == "incapacidades":
+                worksheet = self.sheets.worksheet('incapacidades')
+                for registro in pendientes:
+                    fila = [
+                        registro.get('id'),
+                        registro.get('id_empleado'),
+                        registro.get('tipo'),
+                        registro.get('fecha_inicio'),
+                        registro.get('fecha_fin'),
+                        registro.get('dias_totales'),
+                        registro.get('motivo'),
+                        registro.get('folio'),
+                        registro.get('institucion'),
+                        registro.get('documento_url'),
+                        registro.get('oficina'),
+                        registro.get('registrado_por'),
+                        registro.get('timestamp_creacion'),
+                    ]
+                    worksheet.append_row(fila)
+                    
+                    # Marcar como sincronizado
+                    self.supabase.table(tabla).update({
+                        'sincronizado': True
+                    }).eq('id', registro['id']).execute()
+            
+            return {"success": True, "mensaje": f"{len(pendientes)} registros sincronizados", "sincronizados": len(pendientes)}
             
         except Exception as e:
-            return False, f"Error: {e}"
+            return {"success": False, "mensaje": f"Error: {e}", "sincronizados": 0}
     
     def log_action(self, usuario, accion, modulo, detalles, id_registro=None):
         """Log de auditoría"""

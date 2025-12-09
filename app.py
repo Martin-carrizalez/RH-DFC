@@ -1,6 +1,8 @@
 import streamlit as st
 from auth import check_authentication, login, logout, get_user_info
 from modules.asistencias import show_asistencias_module
+from modules.permisos import show_permisos_module
+from modules.incapacidades import show_incapacidades_module
 
 
 # Configuración de la página
@@ -132,7 +134,7 @@ def show_dashboard():
         df_empleados = sheets.get_dataframe("empleados")
         total_empleados = 0
         if not df_empleados.empty and 'activo' in df_empleados.columns:
-            total_empleados = len(df_empleados[df_empleados['activo'] == 'SI'])
+            total_empleados = len(df_empleados[df_empleados['activo'].str.upper() == 'SI'])
         st.metric("👥 Empleados Activos", total_empleados)
     
     with col2:
@@ -155,7 +157,9 @@ def show_dashboard():
         st.metric("📝 Permisos Pendientes", permisos_pendientes)
     
     with col4:
-        oficinas = get_oficinas_list(sheets)
+        oficinas = []
+        if not df_empleados.empty and 'oficina' in df_empleados.columns:
+            oficinas = df_empleados['oficina'].unique().tolist()
         st.metric("🏢 Oficinas", len(oficinas))
     
     st.markdown("---")
@@ -163,38 +167,134 @@ def show_dashboard():
     # Información rápida
     st.subheader("📊 Resumen del Sistema")
     
-    tab1, tab2, tab3 = st.tabs(["Últimas Asistencias", "Permisos Recientes", "Alertas"])
+    tab1, tab2, tab3 = st.tabs(["Últimas Asistencias", "Permisos Recientes", "Incapacidades Activas"])
     
     with tab1:
-        if not df_asistencias.empty and 'timestamp_sistema' in df_asistencias.columns:
-            cols_mostrar = [col for col in ['fecha', 'id_empleado', 'estado', 'oficina'] if col in df_asistencias.columns]
-            if cols_mostrar:
-                df_ultimas = df_asistencias.tail(10).sort_values('timestamp_sistema', ascending=False)
-                st.dataframe(df_ultimas[cols_mostrar], use_container_width=True)
+        if not df_asistencias.empty:
+            try:
+                # Obtener nombres de empleados
+                df_empleados_info = sheets.get_dataframe("empleados")
+                
+                # Merge para mostrar nombres
+                df_display = df_asistencias.merge(
+                    df_empleados_info[['id_empleado', 'nombre_completo']],
+                    on='id_empleado',
+                    how='left'
+                )
+                
+                # Ordenar por timestamp y tomar últimas 10
+                if 'timestamp_sistema' in df_display.columns:
+                    df_display = df_display.sort_values('timestamp_sistema', ascending=False).head(10)
+                else:
+                    df_display = df_display.tail(10)
+                
+                # Seleccionar columnas a mostrar
+                cols_mostrar = []
+                if 'fecha' in df_display.columns:
+                    cols_mostrar.append('fecha')
+                if 'nombre_completo' in df_display.columns:
+                    cols_mostrar.append('nombre_completo')
+                elif 'id_empleado' in df_display.columns:
+                    cols_mostrar.append('id_empleado')
+                if 'estado' in df_display.columns:
+                    cols_mostrar.append('estado')
+                if 'oficina' in df_display.columns:
+                    cols_mostrar.append('oficina')
+                
+                if cols_mostrar:
+                    st.dataframe(df_display[cols_mostrar], use_container_width=True, hide_index=True)
+                else:
+                    st.info("No hay datos para mostrar")
+            except Exception as e:
+                st.error(f"Error al cargar asistencias: {e}")
         else:
             st.info("No hay asistencias registradas")
     
     with tab2:
-        if not df_permisos.empty and 'fecha_solicitud' in df_permisos.columns:
-            cols_mostrar = [col for col in ['id_empleado', 'fecha_solicitud', 'dias_solicitados', 'estado'] if col in df_permisos.columns]
-            if cols_mostrar:
-                df_recientes = df_permisos.tail(10).sort_values('fecha_solicitud', ascending=False)
-                st.dataframe(df_recientes[cols_mostrar], use_container_width=True)
+        if not df_permisos.empty:
+            try:
+                # Obtener nombres de empleados
+                df_empleados_info = sheets.get_dataframe("empleados")
+                
+                # Merge para mostrar nombres
+                df_display = df_permisos.merge(
+                    df_empleados_info[['id_empleado', 'nombre_completo']],
+                    on='id_empleado',
+                    how='left'
+                )
+                
+                # Ordenar por fecha de creación y tomar últimos 10
+                if 'timestamp_creacion' in df_display.columns:
+                    df_display = df_display.sort_values('timestamp_creacion', ascending=False).head(10)
+                else:
+                    df_display = df_display.tail(10)
+                
+                # Seleccionar columnas a mostrar
+                cols_mostrar = []
+                if 'nombre_completo' in df_display.columns:
+                    cols_mostrar.append('nombre_completo')
+                elif 'id_empleado' in df_display.columns:
+                    cols_mostrar.append('id_empleado')
+                if 'fecha_inicio' in df_display.columns:
+                    cols_mostrar.append('fecha_inicio')
+                if 'dias_solicitados' in df_display.columns:
+                    cols_mostrar.append('dias_solicitados')
+                if 'estado' in df_display.columns:
+                    cols_mostrar.append('estado')
+                
+                if cols_mostrar:
+                    st.dataframe(df_display[cols_mostrar], use_container_width=True, hide_index=True)
+                else:
+                    st.info("No hay datos para mostrar")
+            except Exception as e:
+                st.error(f"Error al cargar permisos: {e}")
         else:
             st.info("No hay permisos registrados")
     
     with tab3:
-        st.info("🔔 Sistema de alertas en desarrollo")
-
-def show_permisos_module():
-    """Módulo de permisos (placeholder)"""
-    st.title("📝 Gestión de Permisos")
-    st.info("🚧 Módulo en desarrollo - Próximamente disponible")
-
-def show_incapacidades_module():
-    """Módulo de incapacidades (placeholder)"""
-    st.title("🏥 Gestión de Incapacidades")
-    st.info("🚧 Módulo en desarrollo - Próximamente disponible")
+        # Mostrar incapacidades activas
+        df_incapacidades = sheets.get_dataframe("incapacidades")
+        if not df_incapacidades.empty:
+            try:
+                from datetime import datetime
+                hoy = datetime.now().date()
+                
+                # Filtrar incapacidades activas (fecha_fin >= hoy)
+                df_incapacidades['fecha_fin_dt'] = pd.to_datetime(df_incapacidades['fecha_fin']).dt.date
+                df_activas = df_incapacidades[df_incapacidades['fecha_fin_dt'] >= hoy]
+                
+                if not df_activas.empty:
+                    # Merge con empleados
+                    df_empleados_info = sheets.get_dataframe("empleados")
+                    df_display = df_activas.merge(
+                        df_empleados_info[['id_empleado', 'nombre_completo']],
+                        on='id_empleado',
+                        how='left'
+                    )
+                    
+                    # Seleccionar columnas
+                    cols_mostrar = []
+                    if 'nombre_completo' in df_display.columns:
+                        cols_mostrar.append('nombre_completo')
+                    if 'tipo' in df_display.columns:
+                        cols_mostrar.append('tipo')
+                    if 'fecha_inicio' in df_display.columns:
+                        cols_mostrar.append('fecha_inicio')
+                    if 'fecha_fin' in df_display.columns:
+                        cols_mostrar.append('fecha_fin')
+                    if 'dias_totales' in df_display.columns:
+                        cols_mostrar.append('dias_totales')
+                    
+                    if cols_mostrar:
+                        st.dataframe(df_display[cols_mostrar].head(10), use_container_width=True, hide_index=True)
+                    else:
+                        st.info("No hay incapacidades activas")
+                else:
+                    st.info("No hay incapacidades activas")
+            except Exception as e:
+                st.error(f"Error al cargar incapacidades: {e}")
+        else:
+            st.info("No hay incapacidades registradas")
 
 def show_bonos_module():
     """Módulo de bonos (placeholder)"""
@@ -220,11 +320,6 @@ def show_auditoria_module():
     """Módulo de auditoría (placeholder)"""
     st.title("🔍 Registro de Auditoría")
     st.info("🚧 Módulo en desarrollo - Próximamente disponible")
-
-def get_oficinas_list(sheets):
-    """Helper temporal"""
-    from utils.helpers import get_oficinas_list as get_list
-    return get_list(sheets)
 
 if __name__ == "__main__":
     main()
