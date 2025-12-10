@@ -474,6 +474,6 @@ Envía un email a: [martin.carrizalez0823@alumnos.udg.mx.com]]
 
 **Desarrollado por [Martin Angel Carrizalez Piña]**
 
-© 2024 Todos los derechos reservados
+© 2026 Todos los derechos reservados
 
 </div>
